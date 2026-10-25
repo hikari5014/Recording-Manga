@@ -1,7 +1,14 @@
 // 版本號只改這裡。發佈新版：改 APP_VERSION，並在 APP_CHANGELOG 最上面加一筆。
-self.APP_VERSION = '1.0.0';
+self.APP_VERSION = '1.1.0';
 
 self.APP_CHANGELOG = [
+  {
+    version: '1.1.0',
+    date: '2026-10-26',
+    changes: [
+      '新增「下載所有圖片」：拼圖加上每一格的原圖，不含文字檔',
+    ],
+  },
   {
     version: '1.0.0',
     date: '2026-10-26',

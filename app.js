@@ -480,22 +480,25 @@
   }
   function baseName() { return `影格拼圖_${today()}`; }
 
-  async function downloadZip() {
+  // withText=false：只放圖片（拼圖 + 每格原圖）
+  async function downloadZip(withText, btn) {
     if (!result || !window.JSZip) return;
-    const btn = $('downloadZip');
     btn.disabled = true;
     try {
       const zip = new JSZip();
-      const root = zip.folder(baseName());
+      const name = withText ? baseName() : baseName() + '_圖片';
+      const root = zip.folder(name);
       root.file('sheet.png', result.sheetBlob);
       const fdir = root.folder('frames');
       for (const f of result.frames) {
         fdir.file(`${pad2(f.index)}_${fmtSec(f.time)}.png`, await canvasToBlob(f.canvas));
       }
-      root.file('timeline.md', result.timeline);
-      root.file('prompt.md', $('promptText').value);
+      if (withText) {
+        root.file('timeline.md', result.timeline);
+        root.file('prompt.md', $('promptText').value);
+      }
       const blob = await zip.generateAsync({ type: 'blob' });
-      downloadBlob(blob, baseName() + '.zip');
+      downloadBlob(blob, name + '.zip');
     } catch (e) {
       toast('打包失敗：' + e.message);
     } finally {
@@ -660,7 +663,8 @@
     $('copySheet').addEventListener('click', copySheet);
     $('copyPrompt').addEventListener('click', copyPrompt);
     $('downloadPng').addEventListener('click', () => result && downloadBlob(result.sheetBlob, baseName() + '.png'));
-    $('downloadZip').addEventListener('click', downloadZip);
+    $('downloadZip').addEventListener('click', (e) => downloadZip(true, e.currentTarget));
+    $('downloadImages').addEventListener('click', (e) => downloadZip(false, e.currentTarget));
     $('downloadRaw').addEventListener('click', () => rawVideo && downloadBlob(rawVideo.blob, `螢幕錄影_${today()}.${rawVideo.ext}`));
     $('reprocess').addEventListener('click', process);
     $('goalInput').addEventListener('change', () => {
