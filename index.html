@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>影格拼圖</title>
+  <meta name="description" content="把螢幕錄影變成 AI 看得懂的漫畫格大圖">
+  <meta name="theme-color" content="#16161a">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="影格拼圖">
+  <link rel="stylesheet" href="app.css">
+  <script>
+    // 先套用外觀，避免閃一下
+    try {
+      var t = JSON.parse(localStorage.getItem('frameSheet.settings') || '{}').theme;
+      if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+    } catch (e) {}
+  </script>
+</head>
+<body>
+  <div id="updateBanner" class="banner" hidden>
+    <span id="updateText">有新版本</span>
+    <button id="updateNow" class="btn btn-small btn-primary" type="button">立即更新</button>
+    <button id="updateLater" class="btn btn-small btn-ghost" type="button" aria-label="稍後">稍後</button>
+  </div>
+
+  <header class="top">
+    <div class="brand">
+      <img src="icons/icon.svg" alt="" width="28" height="28">
+      <h1>影格拼圖</h1>
+      <span class="ver" id="headerVersion"></span>
+    </div>
+    <button id="openSettings" class="btn btn-ghost" type="button" aria-label="設定">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      <span>設定</span>
+    </button>
+  </header>
+
+  <main>
+    <section class="input-card" id="inputCard">
+      <p class="lead">把錄影變成一張「漫畫格子」大圖，每格標上編號和秒數，貼給 AI 就能看懂動作。所有處理都在你的瀏覽器裡，影片不會上傳。</p>
+      <div class="actions">
+        <button id="recordBtn" class="btn btn-primary btn-big" type="button">
+          <span class="dot"></span><span id="recordLabel">開始錄影</span>
+        </button>
+        <label class="btn btn-big btn-outline" for="fileInput">上傳影片</label>
+        <input id="fileInput" type="file" accept="video/mp4,video/webm,video/quicktime,.mp4,.webm,.mov" hidden>
+      </div>
+      <p class="hint" id="inputHint">也可以把影片檔直接拖進這個視窗。</p>
+      <label class="goal">
+        <span>想請 AI 做什麼？（選填，會放進說明文字）</span>
+        <input id="goalInput" type="text" placeholder="例如：用 HTML + CSS 做出一樣的按鈕動畫">
+      </label>
+    </section>
+
+    <section id="progressCard" class="progress-card" hidden>
+      <div class="progress-label" id="progressLabel">處理中…</div>
+      <div class="progress"><div class="progress-bar" id="progressBar"></div></div>
+    </section>
+
+    <section id="resultCard" class="result" hidden>
+      <div class="result-actions">
+        <button class="btn btn-primary" id="copySheet" type="button">複製拼圖</button>
+        <button class="btn" id="copyPrompt" type="button">複製說明</button>
+        <button class="btn" id="downloadPng" type="button">下載拼圖 PNG</button>
+        <button class="btn" id="downloadZip" type="button">下載整包 zip</button>
+        <button class="btn" id="downloadRaw" type="button" hidden>下載原始錄影</button>
+        <button class="btn" id="reprocess" type="button" title="用目前的設定重新產生">重新產生</button>
+      </div>
+      <div class="sheet-wrap">
+        <img id="sheetImg" alt="影格拼圖">
+      </div>
+      <label class="prompt-box">
+        <span>給 AI 的說明文字（可以直接修改）</span>
+        <textarea id="promptText" rows="14" spellcheck="false"></textarea>
+      </label>
+    </section>
+  </main>
+
+  <div id="dropOverlay" class="drop-overlay" hidden><div>放開以載入影片</div></div>
+
+  <dialog id="settingsDialog" class="settings">
+    <form method="dialog" class="settings-inner">
+      <div class="settings-head">
+        <h2>設定</h2>
+        <button class="btn btn-ghost" value="close" aria-label="關閉">完成</button>
+      </div>
+
+      <div class="field">
+        <span class="field-label">挑畫面的方式</span>
+        <div class="seg" role="radiogroup">
+          <label><input type="radio" name="mode" value="auto"><span>自動（抓變化）</span></label>
+          <label><input type="radio" name="mode" value="interval"><span>固定間隔</span></label>
+        </div>
+      </div>
+
+      <div class="field">
+        <span class="field-label">格數 <output id="countOut"></output></span>
+        <input type="range" id="countInput" min="4" max="24" step="1">
+      </div>
+
+      <div class="field">
+        <span class="field-label">每排幾格 <output id="colsOut"></output></span>
+        <input type="range" id="colsInput" min="3" max="6" step="1">
+      </div>
+
+      <div class="field">
+        <span class="field-label">每格畫質（寬度）</span>
+        <div class="seg" role="radiogroup">
+          <label><input type="radio" name="width" value="320"><span>320 px</span></label>
+          <label><input type="radio" name="width" value="480"><span>480 px</span></label>
+          <label><input type="radio" name="width" value="640"><span>640 px</span></label>
+        </div>
+      </div>
+
+      <div class="field row">
+        <span class="field-label">錄影時顯示滑鼠</span>
+        <input type="checkbox" class="switch" id="cursorInput">
+      </div>
+
+      <div class="field">
+        <span class="field-label">外觀</span>
+        <div class="seg" role="radiogroup">
+          <label><input type="radio" name="theme" value="system"><span>跟隨系統</span></label>
+          <label><input type="radio" name="theme" value="light"><span>淺色</span></label>
+          <label><input type="radio" name="theme" value="dark"><span>深色</span></label>
+        </div>
+      </div>
+
+      <div class="field row">
+        <span class="field-label">自動檢查更新</span>
+        <input type="checkbox" class="switch" id="autoUpdateInput">
+      </div>
+
+      <div class="field row">
+        <span class="field-label">目前版本 <strong id="settingsVersion"></strong></span>
+        <button class="btn btn-small" id="checkUpdate" type="button">檢查更新</button>
+      </div>
+      <p class="hint" id="updateStatus"></p>
+
+      <details class="changelog">
+        <summary>更新歷史</summary>
+        <div id="changelogList"></div>
+      </details>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script src="version.js"></script>
+  <script src="vendor/jszip.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
