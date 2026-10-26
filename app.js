@@ -58,7 +58,8 @@
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 10000);
   }
-  const canvasToBlob = (c) => new Promise((res) => c.toBlob(res, 'image/png'));
+  const canvasToBlob = (c, type = 'image/png', quality) => new Promise((res) => c.toBlob(res, type, quality));
+  const fmtSize = (bytes) => (bytes >= 1048576 ? (bytes / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(bytes / 1024)) + ' KB');
 
   // ---------- 錄影 ----------
   let recorder = null;
@@ -327,8 +328,9 @@
       setProgress('拼圖中…', 0.97);
       const sheetCanvas = drawSheet(frames, duration, W, H);
       const sheetBlob = await canvasToBlob(sheetCanvas);
+      const sheetJpg = await canvasToBlob(sheetCanvas, 'image/jpeg', 0.82);
       const timeline = buildTimeline(frames, duration);
-      result = { frames, sheetCanvas, sheetBlob, duration, name: source.name, vw, vh, W, H };
+      result = { frames, sheetCanvas, sheetBlob, sheetJpg, duration, name: source.name, vw, vh, W, H };
       result.prompt = buildPrompt(result);
       result.timeline = timeline;
       showResult();
@@ -492,6 +494,10 @@
     sheetUrl = URL.createObjectURL(result.sheetBlob);
     $('sheetImg').src = sheetUrl;
     $('promptText').value = result.prompt;
+    $('sizeOriginal').textContent = `PNG，畫質完全不變（${fmtSize(result.sheetBlob.size)}）`;
+    $('sizeCompressed').textContent = result.sheetJpg
+      ? `JPG，檔案比較小（${fmtSize(result.sheetJpg.size)}）`
+      : 'JPG，檔案比較小';
     $('downloadRaw').hidden = !rawVideo;
     $('resultCard').hidden = false;
     $('resultCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -699,7 +705,20 @@
 
     $('copySheet').addEventListener('click', copySheet);
     $('copyPrompt').addEventListener('click', copyPrompt);
-    $('downloadPng').addEventListener('click', () => result && downloadBlob(result.sheetBlob, baseName() + '.png'));
+    // 下載拼圖：原始 PNG 或壓縮 JPG
+    const menu = $('downloadMenu');
+    const setMenu = (open) => { menu.hidden = !open; $('downloadPng').setAttribute('aria-expanded', String(open)); };
+    $('downloadPng').addEventListener('click', (e) => { e.stopPropagation(); setMenu(menu.hidden); });
+    document.addEventListener('click', (e) => { if (!menu.hidden && !menu.contains(e.target)) setMenu(false); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') setMenu(false); });
+    $('downloadOriginal').addEventListener('click', () => {
+      setMenu(false);
+      if (result) downloadBlob(result.sheetBlob, baseName() + '.png');
+    });
+    $('downloadCompressed').addEventListener('click', () => {
+      setMenu(false);
+      if (result && result.sheetJpg) downloadBlob(result.sheetJpg, baseName() + '.jpg');
+    });
     $('downloadZip').addEventListener('click', (e) => downloadZip(true, e.currentTarget));
     $('downloadImages').addEventListener('click', (e) => downloadZip(false, e.currentTarget));
     $('downloadRaw').addEventListener('click', () => rawVideo && downloadBlob(rawVideo.blob, `螢幕錄影_${today()}.${rawVideo.ext}`));

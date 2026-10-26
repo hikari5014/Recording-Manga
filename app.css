@@ -95,6 +95,19 @@ main { max-width: 1100px; margin: 0 auto; padding: 0 16px 48px; }
 .progress-bar { height: 100%; width: 0; background: var(--accent); transition: width .15s; }
 
 .result-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+.menu-wrap { position: relative; display: inline-flex; }
+.menu {
+  position: absolute; top: calc(100% + 6px); left: 0; z-index: 30; min-width: 220px;
+  background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 4px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.18);
+}
+.menu[hidden] { display: none; }
+.menu button {
+  display: block; width: 100%; text-align: left; background: transparent; border: 0;
+  padding: 8px 12px; border-radius: 8px; cursor: pointer;
+}
+.menu button:hover { background: var(--btn); }
+.menu small { display: block; color: var(--muted); font-size: 12px; }
 .sheet-wrap { overflow: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); }
 .sheet-wrap img { display: block; width: 100%; height: auto; }
 .prompt-box { display: block; margin-top: 16px; }
@@ -162,6 +175,7 @@ main { max-width: 1100px; margin: 0 auto; padding: 0 16px 48px; }
 
 @media (max-width: 520px) {
   .actions .btn-big { flex: 1; }
-  .result-actions .btn { flex: 1 1 40%; }
+  .result-actions .btn, .result-actions .menu-wrap { flex: 1 1 40%; }
+  .menu-wrap .btn { width: 100%; }
   .input-card, .progress-card, .result { padding: 16px; }
 }

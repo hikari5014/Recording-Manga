@@ -1,7 +1,14 @@
 // 版本號只改這裡。發佈新版：改 APP_VERSION，並在 APP_CHANGELOG 最上面加一筆。
-self.APP_VERSION = '1.1.1';
+self.APP_VERSION = '1.2.0';
 
 self.APP_CHANGELOG = [
+  {
+    version: '1.2.0',
+    date: '2026-10-26',
+    changes: [
+      '「下載拼圖」可選擇原始圖檔（PNG）或壓縮圖檔（JPG，檔案比較小），並顯示檔案大小',
+    ],
+  },
   {
     version: '1.1.1',
     date: '2026-10-26',

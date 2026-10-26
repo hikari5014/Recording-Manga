@@ -65,7 +65,13 @@
       <div class="result-actions">
         <button class="btn btn-primary" id="copySheet" type="button">複製拼圖</button>
         <button class="btn" id="copyPrompt" type="button">複製說明</button>
-        <button class="btn" id="downloadPng" type="button">下載拼圖 PNG</button>
+        <div class="menu-wrap">
+          <button class="btn" id="downloadPng" type="button" aria-haspopup="true" aria-expanded="false">下載拼圖 ▾</button>
+          <div class="menu" id="downloadMenu" hidden>
+            <button type="button" id="downloadOriginal"><strong>原始圖檔</strong><small id="sizeOriginal">PNG，畫質完全不變</small></button>
+            <button type="button" id="downloadCompressed"><strong>壓縮圖檔</strong><small id="sizeCompressed">JPG，檔案比較小</small></button>
+          </div>
+        </div>
         <button class="btn" id="downloadImages" type="button" title="拼圖 + 每一格的原圖，不含文字檔">下載所有圖片</button>
         <button class="btn" id="downloadZip" type="button">下載整包 zip</button>
         <button class="btn" id="downloadRaw" type="button" hidden>下載原始錄影</button>
