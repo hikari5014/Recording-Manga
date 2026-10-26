@@ -1,7 +1,15 @@
 // 版本號只改這裡。發佈新版：改 APP_VERSION，並在 APP_CHANGELOG 最上面加一筆。
-self.APP_VERSION = '1.1.0';
+self.APP_VERSION = '1.1.1';
 
 self.APP_CHANGELOG = [
+  {
+    version: '1.1.1',
+    date: '2026-10-26',
+    changes: [
+      '修正：iPhone、iPad 上傳影片後一直停在「讀取影片…」',
+      '手機和平板上，錄影按鈕改為停用並說明原因',
+    ],
+  },
   {
     version: '1.1.0',
     date: '2026-10-26',

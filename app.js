@@ -33,7 +33,7 @@
     el.textContent = msg;
     el.classList.add('show');
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => el.classList.remove('show'), 2200);
+    toastTimer = setTimeout(() => el.classList.remove('show'), Math.max(2200, msg.length * 90));
   }
   function setProgress(label, ratio) {
     $('progressCard').hidden = false;
@@ -141,15 +141,42 @@
     process();
   }
 
+  // iPhone / iPad 的 Safari 不會讀取沒放進頁面的影片，所以要放進頁面（藏起來）並先播一下
   function loadVideo(blob) {
     return new Promise((resolve, reject) => {
       const v = document.createElement('video');
       v.muted = true;
+      v.defaultMuted = true;
       v.playsInline = true;
+      v.setAttribute('muted', '');
+      v.setAttribute('playsinline', '');
       v.preload = 'auto';
+      v.style.cssText = 'position:fixed;left:0;top:0;width:2px;height:2px;opacity:0;pointer-events:none;';
+      document.body.appendChild(v);
+      let settled = false;
+      const ok = () => {
+        if (settled || v.readyState < 2) return;
+        settled = true;
+        clearTimeout(timer);
+        v.pause();
+        resolve(v);
+      };
+      const fail = (err) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        URL.revokeObjectURL(v.src);
+        v.remove();
+        reject(err);
+      };
+      const timer = setTimeout(() => fail(new Error('timeout')), 20000);
+      v.addEventListener('loadeddata', ok);
+      v.addEventListener('canplay', ok);
+      v.addEventListener('error', () => fail(new Error('decode')));
       v.src = URL.createObjectURL(blob);
-      v.onloadeddata = () => resolve(v);
-      v.onerror = () => reject(new Error('decode'));
+      v.load();
+      const p = v.play();
+      if (p && p.then) p.then(() => { v.pause(); ok(); }).catch(() => {});
     });
   }
 
@@ -174,6 +201,8 @@
     return new Promise((resolve) => {
       const done = () => { v.removeEventListener('seeked', done); clearTimeout(timer); resolve(); };
       const timer = setTimeout(done, 3000);
+      // 已經在這個位置時，部分瀏覽器不會再通知「跳轉完成」
+      if (Math.abs(v.currentTime - t) < 0.001 && v.readyState >= 2) return done();
       v.addEventListener('seeked', done);
       v.currentTime = t;
     });
@@ -218,6 +247,11 @@
   }
 
   // ---------- 主流程 ----------
+  // 手機和平板的瀏覽器不開放錄螢幕
+  const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  let canRecord = false;
+
   let result = null; // { frames, sheetCanvas, sheetBlob, prompt, timeline, duration, name }
   let busy = false;
 
@@ -232,9 +266,11 @@
       v = await loadVideo(source.blob);
     } catch (e) {
       busy = false;
-      $('recordBtn').disabled = false;
+      $('recordBtn').disabled = !canRecord;
       hideProgress();
-      toast('打不開這個影片。如果是 iPhone 錄的 .mov（HEVC），請先轉成 mp4 再試。');
+      toast(e && e.message === 'timeout'
+        ? '讀取影片太久沒有反應，請再試一次，或換一段比較短的影片。'
+        : '打不開這個影片。如果是 iPhone 錄的 .mov（HEVC），請先轉成 mp4 再試。');
       return;
     }
     try {
@@ -301,8 +337,9 @@
       toast('處理失敗：' + (e && e.message ? e.message : e));
     } finally {
       URL.revokeObjectURL(v.src);
+      v.remove();
       busy = false;
-      $('recordBtn').disabled = false;
+      $('recordBtn').disabled = !canRecord;
       hideProgress();
     }
   }
@@ -638,7 +675,7 @@
     applyTheme();
     initSettingsUI();
 
-    const canRecord = !!(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia && window.MediaRecorder);
+    canRecord = !isMobile && !!(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia && window.MediaRecorder);
     if (!canRecord) {
       $('recordBtn').disabled = true;
       $('inputHint').textContent = '這個裝置的瀏覽器不支援錄螢幕（iPhone、iPad 只能上傳影片）。也可以把影片檔直接拖進來。';
