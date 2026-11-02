@@ -77,6 +77,15 @@
         <button class="btn" id="downloadRaw" type="button" hidden>下載原始錄影</button>
         <button class="btn" id="reprocess" type="button" title="用目前的設定重新產生">重新產生</button>
       </div>
+      <div class="range-box">
+        <span class="range-title">截取區間</span>
+        <label>從 <input type="number" id="rangeStart" min="0" step="0.1" inputmode="decimal"> 秒</label>
+        <label>到 <input type="number" id="rangeEnd" min="0" step="0.1" inputmode="decimal"> 秒</label>
+        <span class="hint-inline" id="rangeTotal"></span>
+        <button class="btn btn-small btn-primary" id="rangeApply" type="button">套用</button>
+        <button class="btn btn-small" id="rangeAll" type="button">整段</button>
+        <div class="count-line"><span id="countInfo"></span> <button class="link" id="countSettings" type="button">調整格數</button></div>
+      </div>
       <div class="sheet-wrap">
         <img id="sheetImg" alt="影格拼圖">
       </div>
@@ -105,8 +114,22 @@
       </div>
 
       <div class="field">
-        <span class="field-label">格數 <output id="countOut"></output></span>
-        <input type="range" id="countInput" min="4" max="24" step="1">
+        <span class="field-label">格數怎麼決定</span>
+        <div class="seg" role="radiogroup">
+          <label><input type="radio" name="countMode" value="auto"><span>自動（看動態）</span></label>
+          <label><input type="radio" name="countMode" value="fixed"><span>固定格數</span></label>
+          <label><input type="radio" name="countMode" value="fps"><span>每秒幾張</span></label>
+        </div>
+        <p class="hint" id="countAutoHint">畫面動得越多、越久，格子越多（4–24 格）。</p>
+        <div class="sub" id="countFixedBox">
+          <span class="field-label">格數 <output id="countOut"></output></span>
+          <input type="range" id="countInput" min="4" max="24" step="1">
+        </div>
+        <div class="sub" id="countFpsBox">
+          <span class="field-label">每秒 <output id="fpsOut"></output> 張</span>
+          <input type="range" id="fpsInput" min="0" max="7" step="1">
+          <p class="hint">格數 = 秒數 × 每秒張數，最多 60 格。</p>
+        </div>
       </div>
 
       <div class="field">

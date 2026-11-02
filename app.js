@@ -7,7 +7,7 @@
 
   // ---------- 設定 ----------
   const SETTINGS_KEY = 'frameSheet.settings';
-  const DEFAULTS = { mode: 'auto', count: 12, cols: 4, width: 480, cursor: true, theme: 'system', autoUpdate: true };
+  const DEFAULTS = { mode: 'auto', countMode: 'auto', count: 12, fps: 2, cols: 4, width: 480, cursor: true, theme: 'system', autoUpdate: true };
   let settings = loadSettings();
 
   function loadSettings() {
@@ -59,6 +59,9 @@
     setTimeout(() => URL.revokeObjectURL(url), 10000);
   }
   const canvasToBlob = (c, type = 'image/png', quality) => new Promise((res) => c.toBlob(res, type, quality));
+  const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
+  const FPS_STEPS = [0.5, 1, 2, 3, 4, 5, 8, 10];
+  const MAX_FRAMES = 60; // 每秒幾張模式的上限，避免拼圖太大
   const fmtSize = (bytes) => (bytes >= 1048576 ? (bytes / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(bytes / 1024)) + ' KB');
 
   // ---------- 錄影 ----------
@@ -67,6 +70,7 @@
   let recordTimer = null;
   let rawVideo = null; // { blob, ext } 原始錄影
   let source = null; // { blob, name, knownDuration } 目前處理中的影片
+  let range = null; // { start, end } 截取區間（秒），null 代表整段
 
   function pickMime() {
     const list = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm', 'video/mp4'];
@@ -104,6 +108,7 @@
       const ext = type.includes('mp4') ? 'mp4' : 'webm';
       rawVideo = { blob, ext };
       source = { blob, name: '螢幕錄影', knownDuration: elapsed };
+      range = null;
       process();
     };
     stream.getVideoTracks()[0].addEventListener('ended', () => {
@@ -139,6 +144,7 @@
     if (recorder) return;
     rawVideo = null;
     source = { blob: file, name: file.name.replace(/\.[^.]+$/, ''), knownDuration: null };
+    range = null;
     process();
   }
 
@@ -247,6 +253,24 @@
     return [...new Set(picks)].sort((a, b) => a - b);
   }
 
+  // 看畫面動得多寡決定格數：動作段數越多、動的時間越長，格子越多
+  function autoCount(diffs, dt) {
+    const vals = diffs.slice(1).sort((a, b) => a - b);
+    const p10 = vals[Math.floor(vals.length * 0.1)] || 0;
+    const thr = Math.max(0.3, p10 * 1.5); // 過濾畫面雜訊
+    let active = 0, bursts = 0, quiet = 99;
+    for (let i = 1; i < diffs.length; i++) {
+      if (diffs[i] > thr) {
+        active++;
+        if (quiet > 1) bursts++; // 中間只停一下不算新的一段
+        quiet = 0;
+      } else quiet++;
+    }
+    const activeSec = active * dt;
+    const n = active ? Math.round(3 + bursts * 2 + activeSec * 2) : 4;
+    return { n: clamp(n, 4, 24), bursts, activeSec };
+  }
+
   // ---------- 主流程 ----------
   // 手機和平板的瀏覽器不開放錄螢幕
   const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ||
@@ -280,18 +304,38 @@
       const vw = v.videoWidth, vh = v.videoHeight;
       if (!vw || !vh) throw new Error('無法讀取畫面大小');
 
-      const n = Math.max(2, settings.count);
-      const end = Math.max(0, duration - 0.05);
+      // 截取區間
+      let start = 0, stop = duration;
+      if (range) {
+        start = clamp(range.start, 0, duration);
+        stop = clamp(range.end, 0, duration);
+        if (stop - start < 0.2) { toast('區間太短，改用整段影片'); start = 0; stop = duration; }
+      }
+      const end = Math.max(start, Math.min(stop, duration - 0.05));
+      const len = end - start;
+
+      // 格數
+      let n, countNote;
+      if (settings.countMode === 'fps') {
+        const want = Math.floor(len * settings.fps) + 1;
+        n = clamp(want, 2, MAX_FRAMES);
+        countNote = `每秒 ${settings.fps} 張` + (want > MAX_FRAMES ? `（超過上限，只取 ${MAX_FRAMES} 格）` : '');
+      } else if (settings.countMode === 'fixed') {
+        n = Math.max(2, settings.count);
+        countNote = `固定 ${n} 格`;
+      }
+      const needScan = settings.mode === 'auto' || settings.countMode === 'auto';
+
       const tw = THUMB_W, th = Math.max(1, Math.round((THUMB_W * vh) / vw));
       const tc = document.createElement('canvas');
       tc.width = tw; tc.height = th;
       const tctx = tc.getContext('2d', { willReadFrequently: true });
 
-      let times, thumbs;
-      if (settings.mode === 'auto') {
-        const m = Math.round(Math.min(240, Math.max(n * 4, duration * 8)));
+      let times, thumbs = null;
+      if (needScan) {
+        const m = Math.max(2, Math.round(Math.min(240, Math.max((n || 24) * 4, len * 8))));
         const cand = [];
-        for (let i = 0; i < m; i++) cand.push((i * end) / (m - 1));
+        for (let i = 0; i < m; i++) cand.push(start + (i * len) / (m - 1));
         const cThumbs = [];
         const diffs = [0];
         for (let i = 0; i < m; i++) {
@@ -300,13 +344,22 @@
           if (i > 0) diffs.push(diff(cThumbs[i], cThumbs[i - 1]));
           setProgress(`分析畫面變化… ${i + 1}/${m}`, ((i + 1) / m) * 0.7);
         }
-        const idx = pickByChange(diffs, Math.min(n, m));
-        times = idx.map((i) => cand[i]);
-        thumbs = idx.map((i) => cThumbs[i]);
-      } else {
+        if (settings.countMode === 'auto') {
+          const a = autoCount(diffs, len / (m - 1));
+          n = a.n;
+          countNote = a.bursts
+            ? `自動：偵測到 ${a.bursts} 段動作、約 ${a.activeSec.toFixed(1)} 秒在動`
+            : '自動：畫面幾乎沒有變化';
+        }
+        if (settings.mode === 'auto') {
+          const idx = pickByChange(diffs, Math.min(n, m));
+          times = idx.map((i) => cand[i]);
+          thumbs = idx.map((i) => cThumbs[i]);
+        }
+      }
+      if (!times) {
         times = [];
-        for (let k = 0; k < n; k++) times.push((k * end) / (n - 1));
-        thumbs = null;
+        for (let k = 0; k < n; k++) times.push(start + (k * len) / (n - 1));
       }
 
       // 取每格原圖
@@ -321,16 +374,17 @@
         const thumb = thumbs ? thumbs[k] : grayThumb(v, tctx, tw, th);
         const change = k === 0 ? null : diff(thumb, frames[k - 1].thumb);
         frames.push({ index: k + 1, time: times[k], canvas: c, thumb, change });
-        const base = settings.mode === 'auto' ? 0.7 : 0;
+        const base = needScan ? 0.7 : 0;
         setProgress(`擷取畫面… ${k + 1}/${times.length}`, base + ((k + 1) / times.length) * (0.95 - base));
       }
 
       setProgress('拼圖中…', 0.97);
-      const sheetCanvas = drawSheet(frames, duration, W, H);
+      const span = { start, end: stop, full: start <= 0.001 && stop >= duration - 0.001 };
+      const sheetCanvas = drawSheet(frames, duration, W, H, span);
       const sheetBlob = await canvasToBlob(sheetCanvas);
       const sheetJpg = await canvasToBlob(sheetCanvas, 'image/jpeg', 0.82);
-      const timeline = buildTimeline(frames, duration);
-      result = { frames, sheetCanvas, sheetBlob, sheetJpg, duration, name: source.name, vw, vh, W, H };
+      const timeline = buildTimeline(frames, duration, span, countNote);
+      result = { frames, sheetCanvas, sheetBlob, sheetJpg, duration, span, countNote, name: source.name, vw, vh, W, H };
       result.prompt = buildPrompt(result);
       result.timeline = timeline;
       showResult();
@@ -347,7 +401,7 @@
   }
 
   // ---------- 畫拼圖 ----------
-  function drawSheet(frames, duration, W, H) {
+  function drawSheet(frames, duration, W, H, span) {
     const cols = Math.min(settings.cols, frames.length);
     const rows = Math.ceil(frames.length / cols);
     const s = W / 480; // 字和間距跟著格子大小縮放
@@ -375,7 +429,8 @@
     g.fillText('影格拼圖', margin, margin + headerH / 2 - 4 * s);
     g.fillStyle = '#555555';
     g.font = font(15);
-    const info = `總長 ${duration.toFixed(2)} 秒 · ${frames.length} 格 · 由左到右、由上到下閱讀`;
+    const spanText = span.full ? `總長 ${duration.toFixed(2)} 秒` : `區間 ${span.start.toFixed(2)}–${span.end.toFixed(2)} 秒（全長 ${duration.toFixed(2)} 秒）`;
+    const info = `${spanText} · ${frames.length} 格 · 由左到右、由上到下閱讀`;
     g.fillText(info, margin + g.measureText('影格拼圖').width * (22 / 15) + 16 * s, margin + headerH / 2 - 4 * s);
 
     // 格子
@@ -419,13 +474,14 @@
     g.fillStyle = '#777777';
     g.textBaseline = 'top';
     g.textAlign = 'left';
-    g.fillText('0s', tx0, lineY + 14 * s);
+    g.fillText(fmtSec(span.start), tx0, lineY + 14 * s);
     g.textAlign = 'right';
-    g.fillText(fmtSec(duration), tx1, lineY + 14 * s);
+    g.fillText(fmtSec(span.end), tx1, lineY + 14 * s);
+    const spanLen = span.end - span.start;
     // 每格的位置
     g.textAlign = 'center';
     frames.forEach((f, i) => {
-      const x = tx0 + (duration ? (f.time / duration) : 0) * (tx1 - tx0);
+      const x = tx0 + (spanLen ? clamp((f.time - span.start) / spanLen, 0, 1) : 0) * (tx1 - tx0);
       g.fillStyle = '#e5484d';
       g.beginPath(); g.arc(x, lineY, 5 * s, 0, Math.PI * 2); g.fill();
       g.font = mono(12, 700);
@@ -439,11 +495,12 @@
   }
 
   // ---------- 文字 ----------
-  function buildTimeline(frames, duration) {
+  function buildTimeline(frames, duration, span, countNote) {
     const lines = [
       '# 時間軸',
       '',
-      `影片總長：${duration.toFixed(2)} 秒　格數：${frames.length}`,
+      `影片總長：${duration.toFixed(2)} 秒　格數：${frames.length}（${countNote}）`,
+      span.full ? '截取區間：整段' : `截取區間：${fmtSec(span.start)} – ${fmtSec(span.end)}`,
       '',
       '| 格 | 時間 | 與上一格相差 | 與上一格的變化量 |',
       '|---|---|---|---|',
@@ -470,6 +527,7 @@
       '',
       '## 怎麼看這張圖',
       `- 影片總長 ${r.duration.toFixed(2)} 秒，共 ${r.frames.length} 格，原始畫面 ${r.vw}×${r.vh}。`,
+      ...(r.span.full ? [] : [`- 這張圖只截取影片的 ${fmtSec(r.span.start)} 到 ${fmtSec(r.span.end)} 這一段。`]),
       `- 閱讀順序：由左到右、由上到下，每排 ${Math.min(settings.cols, r.frames.length)} 格。`,
       '- 每格上方黑條：黃色 #編號、白色秒數（這格在影片中的時間點）、右邊 Δ 是和上一格相比的畫面變化量（0% 代表完全沒變）。',
       `- ${modeText}`,
@@ -499,6 +557,12 @@
       ? `JPG，檔案比較小（${fmtSize(result.sheetJpg.size)}）`
       : 'JPG，檔案比較小';
     $('downloadRaw').hidden = !rawVideo;
+    const d = result.duration.toFixed(2);
+    $('rangeStart').value = result.span.start.toFixed(2);
+    $('rangeEnd').value = result.span.end.toFixed(2);
+    $('rangeStart').max = d; $('rangeEnd').max = d;
+    $('rangeTotal').textContent = `全長 ${d} 秒`;
+    $('countInfo').textContent = `這次 ${result.frames.length} 格 · ${result.countNote}`;
     $('resultCard').hidden = false;
     $('resultCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
@@ -549,6 +613,16 @@
     }
   }
 
+  // 讀取畫面上的截取區間後重新產生
+  function applyRange() {
+    if (!result) return process();
+    const a = parseFloat($('rangeStart').value), b = parseFloat($('rangeEnd').value);
+    const s0 = isFinite(a) ? a : 0, s1 = isFinite(b) ? b : result.duration;
+    if (s1 - s0 < 0.2) { toast('「到」要比「從」至少多 0.2 秒'); return; }
+    range = { start: s0, end: s1 };
+    process();
+  }
+
   // ---------- 設定畫面 ----------
   function initSettingsUI() {
     const dlg = $('settingsDialog');
@@ -556,11 +630,20 @@
     const setRadio = (name, val) => {
       form.querySelectorAll(`input[name="${name}"]`).forEach((r) => { r.checked = r.value === String(val); });
     };
+    const showCountBox = () => {
+      $('countFixedBox').hidden = settings.countMode !== 'fixed';
+      $('countFpsBox').hidden = settings.countMode !== 'fps';
+      $('countAutoHint').hidden = settings.countMode !== 'auto';
+    };
     const fill = () => {
       setRadio('mode', settings.mode);
       setRadio('width', settings.width);
       setRadio('theme', settings.theme);
+      setRadio('countMode', settings.countMode);
       $('countInput').value = settings.count; $('countOut').textContent = settings.count;
+      const fi = FPS_STEPS.indexOf(settings.fps);
+      $('fpsInput').value = fi < 0 ? 2 : fi; $('fpsOut').textContent = settings.fps;
+      showCountBox();
       $('colsInput').value = settings.cols; $('colsOut').textContent = settings.cols;
       $('cursorInput').checked = settings.cursor;
       $('autoUpdateInput').checked = settings.autoUpdate;
@@ -570,6 +653,8 @@
     form.addEventListener('input', (e) => {
       const t = e.target;
       if (t.name === 'mode') settings.mode = t.value;
+      else if (t.name === 'countMode') { settings.countMode = t.value; showCountBox(); }
+      else if (t.id === 'fpsInput') { settings.fps = FPS_STEPS[Number(t.value)]; $('fpsOut').textContent = settings.fps; }
       else if (t.name === 'width') settings.width = Number(t.value);
       else if (t.name === 'theme') { settings.theme = t.value; applyTheme(); }
       else if (t.id === 'countInput') { settings.count = Number(t.value); $('countOut').textContent = t.value; }
@@ -722,7 +807,11 @@
     $('downloadZip').addEventListener('click', (e) => downloadZip(true, e.currentTarget));
     $('downloadImages').addEventListener('click', (e) => downloadZip(false, e.currentTarget));
     $('downloadRaw').addEventListener('click', () => rawVideo && downloadBlob(rawVideo.blob, `螢幕錄影_${today()}.${rawVideo.ext}`));
-    $('reprocess').addEventListener('click', process);
+    $('reprocess').addEventListener('click', applyRange);
+    $('rangeApply').addEventListener('click', applyRange);
+    $('rangeAll').addEventListener('click', () => { range = null; process(); });
+    ['rangeStart', 'rangeEnd'].forEach((id) => $(id).addEventListener('keydown', (e) => { if (e.key === 'Enter') applyRange(); }));
+    $('countSettings').addEventListener('click', () => $('openSettings').click());
     $('goalInput').addEventListener('change', () => {
       if (result) { result.prompt = buildPrompt(result); $('promptText').value = result.prompt; }
     });

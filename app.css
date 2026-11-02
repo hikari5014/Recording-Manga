@@ -111,6 +111,19 @@ main { max-width: 1100px; margin: 0 auto; padding: 0 16px 48px; }
 .sheet-wrap { overflow: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); }
 .sheet-wrap img { display: block; width: 100%; height: auto; }
 .prompt-box { display: block; margin-top: 16px; }
+.range-box {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 14px;
+  padding: 10px 12px; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; font-size: 14px;
+}
+.range-title { font-weight: 600; }
+.range-box input {
+  width: 80px; background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 4px 8px;
+}
+.hint-inline { color: var(--muted); font-size: 13px; }
+.count-line { flex-basis: 100%; color: var(--muted); font-size: 13px; }
+.link { background: none; border: 0; padding: 0; color: var(--accent); cursor: pointer; text-decoration: underline; font-size: 13px; }
+.sub { margin-top: 10px; }
+.sub[hidden] { display: none; }
 
 .drop-overlay {
   position: fixed; inset: 0; background: rgba(229,72,77,.15); border: 3px dashed var(--accent);
